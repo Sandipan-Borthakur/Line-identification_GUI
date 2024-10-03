@@ -1,0 +1,1 @@
+This is a code to identify lines in an echelle spectrum manually. The GUI displays all the orders and you can select regions to add to your linelist and type in the wavelength in the table. The is not completed yet.

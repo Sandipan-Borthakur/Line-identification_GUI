@@ -1,17 +1,15 @@
 import sys
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QTabWidget, QTableWidget, QTableWidgetItem, QSplitter,
-                             QCheckBox, QHeaderView)
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
+                             QTableWidgetItem, QSplitter,
+                             QCheckBox, QHeaderView, QPushButton)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+from matplotlib.widgets import SpanSelector
 from matplotlib.figure import Figure
 import numpy as np
 from astropy.io import fits
 from scipy import signal
 import os.path
-
-def onclick(event,order):
-    if event.button==3:
-        print(event.xdata,order)
 
 def create_image_from_lines(lines,ncol):
     max_order = int(np.max(lines["order"]))
@@ -76,7 +74,19 @@ class PlotCanvas(FigureCanvas):
             self.hidden_lines.add(line_idx)  # Add to hidden lines if unchecked
         self.plot(index)  # Re-plot to reflect changes
 
+    def on_button_click(self):
+        print(self.tempxmin,self.tempxmax)
+
+    def onselect(self,xmin, xmax, line_idx):
+        self.tempxmin,self.tempxmax = xmin,xmax
+        # print(xmin,xmax,line_idx)
+
     def plot(self, index):
+        self.button = QPushButton('Add line', self)
+        self.button.clicked.connect(self.on_button_click)
+        layout = QVBoxLayout()
+        layout.addWidget(self.button)
+
         self.axes.clear()
         self.axes.plot(np.arange(0, self.thar_master.shape[1]), self.thar_master[index])
 
@@ -97,6 +107,16 @@ class PlotCanvas(FigureCanvas):
                 maxpixel = self.pixels[cropxfirsts[j] + indlinepos]
                 self.axes.plot([maxpixel, maxpixel], [1.1 * linepos, 1.5 * linepos], 'r', lw=2)
                 self.axes.text(maxpixel, 1.6 * linepos, '{:.4f}'.format(cropwavelengths[j]), rotation='vertical')
+
+        self.span = SpanSelector(
+            self.axes,
+            lambda xmin,xmax:self.onselect(xmin,xmax,line_idx=index),
+            "horizontal",
+            useblit=True,
+            props=dict(alpha=0.3, facecolor="tab:green"),
+            interactive=True,
+            drag_from_anywhere=True
+        )
 
         self.axes.set_title(f'ThAr Master Order {index + 1}')
         self.axes.set_xlabel('Pixels')
@@ -157,20 +177,21 @@ class MainWindow(QMainWindow):
         # Set number of rows and columns in the table
         table.setRowCount(len(order_lines))
         table.setColumnCount(6)  # Add one more column for the checkbox
-        table.setHorizontalHeaderLabels(['Order', 'Wavelength', 'Position', 'xFirst', 'xLast', 'Visible'])
+        table.setHorizontalHeaderLabels(['Select','Order', 'Wavelength', 'Position', 'xFirst', 'xLast'])
 
         for i, line in enumerate(order_lines):
-            table.setItem(i, 0, QTableWidgetItem(f'{line["order"]:.0f}'))  # Order
-            table.setItem(i, 1, QTableWidgetItem(f'{line["wlc"]:.4f}'))  # Wavelength
-            table.setItem(i, 2, QTableWidgetItem(f'{line["posm"]:.2f}'))  # Position
-            table.setItem(i, 3, QTableWidgetItem(f'{line["xfirst"]:.0f}'))  # xFirst
-            table.setItem(i, 4, QTableWidgetItem(f'{line["xlast"]:.0f}'))  # xLast
-
             # Add a checkbox to toggle line visibility
             checkbox = QCheckBox()
             checkbox.setChecked(True)  # Checked by default
-            checkbox.stateChanged.connect(lambda state, line_idx=i: self.toggle_line(canvas, index, line_idx, state == 2))
-            table.setCellWidget(i, 5, checkbox)  # Add the checkbox to the 6th column
+            checkbox.stateChanged.connect(
+                lambda state, line_idx=i: self.toggle_line(canvas, index, line_idx, state == 2))
+            table.setCellWidget(i, 0, checkbox)  # Add the checkbox to the 0th column
+
+            table.setItem(i, 1, QTableWidgetItem(f'{line["order"]:.0f}'))
+            table.setItem(i, 2, QTableWidgetItem(f'{line["wlc"]:.4f}'))
+            table.setItem(i, 3, QTableWidgetItem(f'{line["posm"]:.2f}'))
+            table.setItem(i, 4, QTableWidgetItem(f'{line["xfirst"]:.0f}'))
+            table.setItem(i, 5, QTableWidgetItem(f'{line["xlast"]:.0f}'))
 
         table.resizeColumnsToContents()
         table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)

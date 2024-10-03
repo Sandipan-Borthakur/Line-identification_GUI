@@ -9,6 +9,7 @@ from matplotlib.figure import Figure
 import numpy as np
 from astropy.io import fits
 from scipy import signal
+from scipy.signal import find_peaks
 import os.path
 
 def create_image_from_lines(lines,ncol):
@@ -75,11 +76,12 @@ class PlotCanvas(FigureCanvas):
         self.plot(index)  # Re-plot to reflect changes
 
     def on_button_click(self):
-        print(self.tempxmin,self.tempxmax)
+        print(self.temporder,self.temppeak,self.tempxfirst,self.tempxlast)
 
-    def onselect(self,xmin, xmax, line_idx):
-        self.tempxmin,self.tempxmax = xmin,xmax
-        # print(xmin,xmax,line_idx)
+    def onselect(self,xmin, xmax, line_idx, thar_master_single_order):
+        self.temporder, self.tempxfirst, self.tempxlast = line_idx, int(xmin), int(xmax)
+        flux_order = thar_master_single_order[self.tempxfirst:self.tempxlast+1]
+        self.temppeak = np.argmax(flux_order)+self.tempxfirst
 
     def plot(self, index):
         self.button = QPushButton('Add line', self)
@@ -110,7 +112,7 @@ class PlotCanvas(FigureCanvas):
 
         self.span = SpanSelector(
             self.axes,
-            lambda xmin,xmax:self.onselect(xmin,xmax,line_idx=index),
+            lambda xmin,xmax:self.onselect(xmin,xmax,line_idx=index,thar_master_single_order=self.thar_master[index]),
             "horizontal",
             useblit=True,
             props=dict(alpha=0.3, facecolor="tab:green"),

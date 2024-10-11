@@ -1,5 +1,7 @@
+import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
+
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
                              QTableWidgetItem, QSplitter,
                              QCheckBox, QHeaderView, QPushButton)
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
@@ -149,6 +151,7 @@ def create_image_from_lines(lines, ncol):
         last = int(min(line["xlast"], ncol))
         img[int(line["order"]), first:last] = line["height"] * signal.windows.gaussian(last - first, line["width"])
     return img
+
 def find_offset(offset_info_path, lines, thar_master):
     if os.path.exists(offset_info_path):
         offset = np.loadtxt(offset_info_path)
@@ -162,6 +165,7 @@ def find_offset(offset_info_path, lines, thar_master):
         offset = [int(offset_order), int(offset_x)]
         np.savetxt(offset_info_path, np.c_[int(offset_order), int(offset_x)], delimiter=' ', fmt=['%d', '%d'])
     return offset
+
 def apply_alignment_offset(lines, offset, select=None):
     lines["xfirst"][select] += offset[1]
     lines["xlast"][select] += offset[1]
@@ -264,7 +268,7 @@ class PlotCanvas(FigureCanvas):
             interactive=True,
             drag_from_anywhere=True
         )
-        self.axes.set_title(f'ThAr Master Order {index + 1}')
+        self.axes.set_title(f'ThAr Master Order {index}')
         self.axes.set_xlabel('Pixels')
         self.axes.set_ylabel('Intensity')
         self.axes.set_ylim((-400, max(self.thar_master[index]) + 400))
@@ -299,7 +303,7 @@ class MainWindow(QMainWindow):
             linelist_table = QTableWidget()
             canvas = PlotCanvas(self.thar_master, self.lines, linelist_table, index=i, parent=self, width=5, height=4)
 
-            toolbar = NavigationToolbar(canvas, self)
+
 
             self.populate_linelist_table(linelist_table, self.lines, i, canvas)
 
@@ -310,12 +314,34 @@ class MainWindow(QMainWindow):
             splitter.setStretchFactor(1, 1)
 
             layout.addWidget(splitter)
-            layout.addWidget(toolbar)
-            tab_widget.addTab(tab, f"Order {i + 1}")
 
+
+            # Create horizontal layout for buttons
+            button_layout = QHBoxLayout()
+
+            # Create Save button
             self.button = QPushButton('Save', self)
+            self.button.setFixedSize(80, 30)  # Set fixed size for the button
             self.button.clicked.connect(self.onclick)
-            layout.addWidget(self.button)
+
+            # Create Update button
+            self.updatebutton = QPushButton('Update', self)
+            self.updatebutton.setFixedSize(80, 30)  # Set fixed size for the button
+            self.updatebutton.clicked.connect(self.onclickupdate)
+
+            # Add buttons to the horizontal layout
+            button_layout.addWidget(self.button)
+            button_layout.addWidget(self.updatebutton)
+
+            # Align the horizontal button layout to the right
+            button_layout.setAlignment(Qt.AlignRight)
+
+            # Add button layout to the main vertical layout
+            layout.addLayout(button_layout)  # Add the button layout
+
+            tab_widget.addTab(tab, f"Order {i}")
+            toolbar = NavigationToolbar(canvas, self)
+            layout.addWidget(toolbar)
 
     def populate_linelist_table(self, table, lines, index, canvas):
         """Populate the QTableWidget with linelist data and add checkboxes to toggle line visibility."""
@@ -351,6 +377,39 @@ class MainWindow(QMainWindow):
 
         print(f'Selected lines saved to {save_path}')
 
+    def onclickupdate(self):
+        """Update the linelist with the new data from the table."""
+        for i in range(self.centralWidget().count()):  # Loop over all the tabs
+            # Access the QSplitter in the tab (it contains both the PlotCanvas and the table)
+            splitter = self.centralWidget().widget(i).layout().itemAt(0).widget()  # The splitter is the first widget
+            canvas = splitter.widget(0)  # The PlotCanvas is the first widget in the splitter
+            table = splitter.widget(1)  # The QTableWidget is the second widget in the splitter
+
+            self.update_linelist_from_table(table, canvas.lines)
+
+        print("Linelist updated with the new values")
+
+    def update_linelist_from_table(self, table, lines):
+        """Update the linelist array with values from the QTableWidget."""
+        for row in range(table.rowCount()):
+            order = int(table.item(row, 1).text())  # Order
+            wlc = float(table.item(row, 2).text())  # Wavelength
+            posm = float(table.item(row, 3).text())  # Position
+            xfirst = int(float(table.item(row, 4).text()))  # xFirst
+            xlast = int(float(table.item(row, 5).text()))  # xLast
+
+            # Find the corresponding line in the `lines` array
+            line_index = np.where((lines['order'] == order) & (lines['posm'] == posm))[0]
+            if len(line_index) == 1:
+                line_index = line_index[0]
+                lines[line_index]['wlc'] = wlc
+                lines[line_index]['wll'] = wlc
+                lines[line_index]['posm'] = posm
+                lines[line_index]['xfirst'] = xfirst
+                lines[line_index]['xlast'] = xlast
+            else:
+                print(f"Could not find a matching line for order {order} at position {posm}")
+
     def get_visible_lines(self):
         visible_lines = []
 
@@ -358,10 +417,15 @@ class MainWindow(QMainWindow):
             # Access the QSplitter in the tab (it contains both the PlotCanvas and the table)
             splitter = self.centralWidget().widget(i).layout().itemAt(0).widget()  # The splitter is the first widget
             canvas = splitter.widget(0)  # The PlotCanvas is the first widget in the splitter
-
-            for j, line in enumerate(canvas.lines[canvas.lines['order']==i]):
+            if i == self.centralWidget().count()-1:
+                higher_order_lines = canvas.lines[canvas.lines['order'] > i]
+            for j, line in enumerate(canvas.lines[canvas.lines['order'] == i]):
                 if j not in canvas.hidden_lines:  # Check if the line is visible
                     visible_lines.append(line)
+
+        for higher_order_line in higher_order_lines:
+            visible_lines.append(higher_order_line)
+
         return np.array(visible_lines)
 
 def main():

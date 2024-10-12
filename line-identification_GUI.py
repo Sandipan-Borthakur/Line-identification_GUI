@@ -13,6 +13,8 @@ from scipy import signal
 import os.path
 import sys
 import numpy as np
+
+
 sys.path.append('/export/borthaku/Codes/PyReduce')
 from tqdm import tqdm
 from scipy.optimize import least_squares
@@ -172,6 +174,7 @@ def apply_alignment_offset(lines, offset, select=None):
     lines["posm"][select] += offset[1]
     lines["order"][select] += offset[0]
     return lines
+
 class PlotCanvas(FigureCanvas):
     def __init__(self, thar_master, lines, table, index=0, parent=None, width=5, height=4, dpi=100):
         self.thar_master = thar_master
@@ -190,12 +193,12 @@ class PlotCanvas(FigureCanvas):
         # Plot based on index
         self.plot(index)
 
-    def on_button_click(self,index):
+    def on_button_click(self):
         print(self.temporder, self.temppeak, self.tempxfirst, self.tempxlast)
-        wpeak = 0  # Placeholder for wavelength (you can replace with actual value)
-        wipeak = self.tempxlast - self.tempxfirst
-        hpeak = 1  # Placeholder for height (can be calculated or set manually)
-        test = [[wpeak, self.temporder, self.temppeak, wipeak, hpeak, True]]
+        wpeak = 0
+
+        # wave, order, pos, width, height, flag
+        test = [[wpeak, self.temporder, self.temppeak, self.tempwidth, self.tempheight, True]]
         test = np.array(test).T
         new_line = LineList.from_list(*test)
         # Append the new line to the existing lines
@@ -203,7 +206,10 @@ class PlotCanvas(FigureCanvas):
 
         # Update the QTableWidget with the new line
         self.add_line_to_table(new_line)
-        # self.plot(index)
+
+        # Redraw the plot to show the new line (red line)
+        self.plot(self.temporder)
+
 
     def add_line_to_table(self, new_line):
         """Add the new line to the QTableWidget."""
@@ -235,7 +241,13 @@ class PlotCanvas(FigureCanvas):
     def onselect(self, xmin, xmax, line_idx, thar_master_single_order):
         self.temporder, self.tempxfirst, self.tempxlast = line_idx, int(xmin), int(xmax)
         flux_order = thar_master_single_order[self.tempxfirst:self.tempxlast+1]
-        self.temppeak = np.argmax(flux_order) + self.tempxfirst
+        peaks_obs, peak_info_obs = signal.find_peaks(flux_order,height=0.01, width=0)
+        peaks_obs = np.array(peaks_obs)
+        ind = np.where(peaks_obs==np.argmax(flux_order))[0]
+        if len(peaks_obs)!=0:
+            self.temppeak = peaks_obs[0] + self.tempxfirst
+            self.tempwidth = peak_info_obs['widths'][ind][0]
+            self.tempheight = peak_info_obs['peak_heights'][ind][0]
 
     def plot(self, index):
         self.button = QPushButton('Add line', self)
@@ -243,25 +255,24 @@ class PlotCanvas(FigureCanvas):
         layout = QVBoxLayout()
         layout.addWidget(self.button)
         self.axes.clear()
+
+        # Plot the thar_master data for the current order
         self.axes.plot(np.arange(0, self.thar_master.shape[1]), self.thar_master[index])
-        if index in self.orders:
-            ind = np.where(self.orders == index)[0]
-            croppositions = self.positions[ind]
-            cropxfirsts = self.xfirsts[ind]
-            cropxlasts = self.xlasts[ind]
-            cropwavelengths = self.wavelengths[ind]
-            croporders = self.orders[ind]
-            for j in range(len(ind)):
-                if j in self.hidden_lines:  # Skip if the line is hidden
-                    continue
-                indlinepos = np.argmax(self.thar_master[index][cropxfirsts[j]:cropxlasts[j] + 1])
-                linepos = self.thar_master[index][cropxfirsts[j]:cropxlasts[j] + 1][indlinepos]
-                maxpixel = self.pixels[cropxfirsts[j] + indlinepos]
-                self.axes.plot([maxpixel, maxpixel], [1.1 * linepos, 1.5 * linepos], 'r', lw=2)
-                self.axes.text(maxpixel, 1.6 * linepos, '{:.4f}'.format(cropwavelengths[j]), rotation='vertical')
+
+        # Plot the selected lines in red (those with a checked checkbox)
+        for i, line in enumerate(self.lines[self.lines['order'] == index]):
+            if i in self.hidden_lines:
+                continue  # Skip hidden lines
+
+            line_pos = np.argmax(self.thar_master[index][line['xfirst']:line['xlast'] + 1])
+            line_intensity = self.thar_master[index][line['xfirst']:line['xlast'] + 1][line_pos]
+            self.axes.plot([line['posm'], line['posm']], [1.1 * line_intensity, 1.5 * line_intensity], 'r', lw=2)
+            self.axes.text(line['posm'], 1.6 * line_intensity, '{:.4f}'.format(line['wlc']), rotation='vertical')
+
         self.span = SpanSelector(
             self.axes,
-            lambda xmin, xmax: self.onselect(xmin, xmax, line_idx=index, thar_master_single_order=self.thar_master[index]),
+            lambda xmin, xmax: self.onselect(xmin, xmax, line_idx=index,
+                                             thar_master_single_order=self.thar_master[index]),
             "horizontal",
             useblit=True,
             props=dict(alpha=0.3, facecolor="tab:green"),
@@ -271,9 +282,8 @@ class PlotCanvas(FigureCanvas):
         self.axes.set_title(f'ThAr Master Order {index}')
         self.axes.set_xlabel('Pixels')
         self.axes.set_ylabel('Intensity')
-        self.axes.set_ylim((-400, max(self.thar_master[index]) + 400))
+        self.axes.set_ylim((-0.2, max(self.thar_master[index]) + 0.2))
         self.draw()
-
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -287,6 +297,7 @@ class MainWindow(QMainWindow):
         thar_master_path = '/export/borthaku/Codes/toes-pyreduce-pipeline/TOES-reduced/toes.thar_master.fits'
         hdu = fits.open(thar_master_path)
         self.thar_master = hdu[0].data
+        self.thar_master = self.thar_master / np.max(self.thar_master, axis=1).reshape(44, 1)
 
         linelist_path = '/export/borthaku/Codes/toes-pyreduce-pipeline/TOES-reduced/toes.linelist.npz'
         data = np.load(linelist_path, allow_pickle=True)
@@ -386,6 +397,7 @@ class MainWindow(QMainWindow):
             table = splitter.widget(1)  # The QTableWidget is the second widget in the splitter
 
             self.update_linelist_from_table(table, canvas.lines)
+            canvas.plot(i)
 
         print("Linelist updated with the new values")
 
@@ -407,8 +419,6 @@ class MainWindow(QMainWindow):
                 lines[line_index]['posm'] = posm
                 lines[line_index]['xfirst'] = xfirst
                 lines[line_index]['xlast'] = xlast
-            else:
-                print(f"Could not find a matching line for order {order} at position {posm}")
 
     def get_visible_lines(self):
         visible_lines = []

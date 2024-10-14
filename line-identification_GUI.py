@@ -159,13 +159,17 @@ def find_offset(offset_info_path, lines, thar_master):
         offset = np.loadtxt(offset_info_path)
         offset = [int(k) for k in offset]
     else:
-        img = create_image_from_lines(lines, ncol=2088)
-        correlation = signal.correlate2d(thar_master, img, mode="same")
-        offset_order, offset_x = np.unravel_index(np.argmax(correlation), correlation.shape)
-        offset_order = offset_order - img.shape[0] // 2 + 1
-        offset_x = offset_x - img.shape[1] // 2 + 1
-        offset = [int(offset_order), int(offset_x)]
-        np.savetxt(offset_info_path, np.c_[int(offset_order), int(offset_x)], delimiter=' ', fmt=['%d', '%d'])
+        print(len(lines))
+        if len(lines)!=0:
+            img = create_image_from_lines(lines, ncol=2088)
+            correlation = signal.correlate2d(thar_master, img, mode="same")
+            offset_order, offset_x = np.unravel_index(np.argmax(correlation), correlation.shape)
+            offset_order = offset_order - img.shape[0] // 2 + 1
+            offset_x = offset_x - img.shape[1] // 2 + 1
+            offset = [int(offset_order), int(offset_x)]
+            np.savetxt(offset_info_path, np.c_[int(offset_order), int(offset_x)], delimiter=' ', fmt=['%d', '%d'])
+        else:
+            offset = [0,0]
     return offset
 
 def apply_alignment_offset(lines, offset, select=None):
@@ -341,7 +345,7 @@ class MainWindow(QMainWindow):
         if linelist_path:
             self.linelist_path = linelist_path
             self.load_or_create_linelist()
-
+            self.populate_tabs()
 
     def load_or_create_linelist(self):
         """Load an existing linelist or create a new empty one."""
@@ -437,7 +441,7 @@ class MainWindow(QMainWindow):
         if self.linelist_path:
             save_path = self.linelist_path
         else:
-            save_path = os.path.join(os.getcwd(), 'linelist_test.npz')
+            save_path = 'linelist_test.npz'
         np.savez(save_path, cs_lines=visible_lines)
 
         print(f'Selected lines saved to {save_path}')

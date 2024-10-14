@@ -438,10 +438,7 @@ class MainWindow(QMainWindow):
         visible_lines = self.get_visible_lines()
 
         # Save the visible lines to an npz file
-        if self.linelist_path:
-            save_path = self.linelist_path
-        else:
-            save_path = 'linelist_test.npz'
+        save_path = 'linelist_test.npz'
         np.savez(save_path, cs_lines=visible_lines)
 
         print(f'Selected lines saved to {save_path}')
@@ -481,11 +478,11 @@ class MainWindow(QMainWindow):
     def get_visible_lines(self):
         visible_lines = []
 
-        for i in range(self.centralWidget().count()):  # Loop over all the tabs
+        for i in range(self.tab_widget.count()):  # Loop over all the tabs
             # Access the QSplitter in the tab (it contains both the PlotCanvas and the table)
-            splitter = self.centralWidget().widget(i).layout().itemAt(0).widget()  # The splitter is the first widget
+            splitter = self.tab_widget.widget(0).layout().itemAt(0).widget()  # The splitter is the first widget
             canvas = splitter.widget(0)  # The PlotCanvas is the first widget in the splitter
-            if i == self.centralWidget().count()-1:
+            if i == self.tab_widget.count()-1:
                 higher_order_lines = canvas.lines[canvas.lines['order'] > i]
             for j, line in enumerate(canvas.lines[canvas.lines['order'] == i]):
                 if j not in canvas.hidden_lines:  # Check if the line is visible

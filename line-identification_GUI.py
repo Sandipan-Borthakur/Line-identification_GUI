@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt
-
+from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
                              QTableWidgetItem, QSplitter,
                              QCheckBox, QHeaderView, QPushButton)
@@ -291,21 +291,75 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Wavelength Calibration Line Identification")
         self.selected_lines = None  # Store the selected lines here
 
-        tab_widget = QTabWidget()
-        self.setCentralWidget(tab_widget)
+        # Create a small button to load ThAr Master file at the top of the window
+        load_button = QPushButton('Load ThAr Master File', self)
+        load_button.setFixedSize(170, 30)  # Make the button small
+        load_button.clicked.connect(self.load_thar_master_file)
 
-        thar_master_path = '/export/borthaku/Codes/toes-pyreduce-pipeline/TOES-reduced/toes.thar_master.fits'
-        hdu = fits.open(thar_master_path)
-        self.thar_master = hdu[0].data
-        self.thar_master = self.thar_master / np.max(self.thar_master, axis=1).reshape(44, 1)
+        load_linelist_button = QPushButton('Load Linelist File', self)
+        load_linelist_button.setFixedSize(150, 30)  # Optional button to load linelist file
+        load_linelist_button.clicked.connect(self.load_linelist_file)
 
-        linelist_path = '/export/borthaku/Codes/toes-pyreduce-pipeline/TOES-reduced/toes.linelist.npz'
-        data = np.load(linelist_path, allow_pickle=True)
-        self.lines = data['cs_lines']
+        # Add buttons to a layout and place it at the top
+        top_layout = QHBoxLayout()
+        top_layout.addWidget(load_button)
+        top_layout.addWidget(load_linelist_button)
+        top_layout.setAlignment(Qt.AlignLeft)
 
-        offset_info_path = 'offset_info.txt'
-        offset = find_offset(offset_info_path, self.lines, self.thar_master)
-        self.lines = apply_alignment_offset(self.lines, offset)
+        # Central widget with a vertical layout for buttons and tabs
+        central_widget = QWidget()
+        central_layout = QVBoxLayout(central_widget)
+        central_layout.addLayout(top_layout)
+
+        self.tab_widget = QTabWidget()
+        central_layout.addWidget(self.tab_widget)
+
+        self.setCentralWidget(central_widget)
+
+        # Initialize attributes to store loaded data
+        self.thar_master = None
+        self.lines = None
+
+        # Placeholders for default file paths
+        self.thar_master_path = None
+        self.linelist_path = None
+
+    def load_thar_master_file(self):
+        """Function to load the ThAr Master file."""
+        thar_master_path, _ = QFileDialog.getOpenFileName(self, "Load ThAr Master FITS file", "", "FITS Files (*.fits)")
+        if thar_master_path:
+            self.thar_master_path = thar_master_path
+            hdu = fits.open(thar_master_path)
+            self.thar_master = hdu[0].data
+            self.thar_master = self.thar_master / np.max(self.thar_master, axis=1).reshape(self.thar_master.shape[0], 1)
+            self.load_or_create_linelist()
+            self.populate_tabs()
+
+    def load_linelist_file(self):
+        """Function to load the Linelist file."""
+        linelist_path, _ = QFileDialog.getOpenFileName(self, "Load Linelist NPZ file", "", "NPZ Files (*.npz)")
+        if linelist_path:
+            self.linelist_path = linelist_path
+            self.load_or_create_linelist()
+
+
+    def load_or_create_linelist(self):
+        """Load an existing linelist or create a new empty one."""
+        if self.linelist_path and os.path.exists(self.linelist_path):
+            data = np.load(self.linelist_path, allow_pickle=True)
+            self.lines = data['cs_lines']
+        else:
+            # Create an empty linelist if no file is provided
+            self.lines = LineList().data
+
+        if self.thar_master is not None:
+            offset_info_path = 'offset_info.txt'
+            offset = find_offset(offset_info_path, self.lines, self.thar_master)
+            self.lines = apply_alignment_offset(self.lines, offset)
+
+    def populate_tabs(self):
+        """Populate the QTabWidget with ThAr master data and linelist info."""
+        self.tab_widget.clear()  # Clear previous tabs
 
         for i in range(self.thar_master.shape[0]):
             tab = QWidget()
@@ -313,8 +367,6 @@ class MainWindow(QMainWindow):
 
             linelist_table = QTableWidget()
             canvas = PlotCanvas(self.thar_master, self.lines, linelist_table, index=i, parent=self, width=5, height=4)
-
-
 
             self.populate_linelist_table(linelist_table, self.lines, i, canvas)
 
@@ -325,7 +377,6 @@ class MainWindow(QMainWindow):
             splitter.setStretchFactor(1, 1)
 
             layout.addWidget(splitter)
-
 
             # Create horizontal layout for buttons
             button_layout = QHBoxLayout()
@@ -350,7 +401,7 @@ class MainWindow(QMainWindow):
             # Add button layout to the main vertical layout
             layout.addLayout(button_layout)  # Add the button layout
 
-            tab_widget.addTab(tab, f"Order {i}")
+            self.tab_widget.addTab(tab, f"Order {i}")
             toolbar = NavigationToolbar(canvas, self)
             layout.addWidget(toolbar)
 
@@ -383,16 +434,19 @@ class MainWindow(QMainWindow):
         visible_lines = self.get_visible_lines()
 
         # Save the visible lines to an npz file
-        save_path = os.path.join(os.getcwd(), 'linelist_test.npz')
+        if self.linelist_path:
+            save_path = self.linelist_path
+        else:
+            save_path = os.path.join(os.getcwd(), 'linelist_test.npz')
         np.savez(save_path, cs_lines=visible_lines)
 
         print(f'Selected lines saved to {save_path}')
 
     def onclickupdate(self):
         """Update the linelist with the new data from the table."""
-        for i in range(self.centralWidget().count()):  # Loop over all the tabs
+        for i in range(self.tab_widget.count()):  # Loop over all the tabs
             # Access the QSplitter in the tab (it contains both the PlotCanvas and the table)
-            splitter = self.centralWidget().widget(i).layout().itemAt(0).widget()  # The splitter is the first widget
+            splitter = self.tab_widget.widget(i).layout().itemAt(0).widget()  # The splitter is the first widget
             canvas = splitter.widget(0)  # The PlotCanvas is the first widget in the splitter
             table = splitter.widget(1)  # The QTableWidget is the second widget in the splitter
 

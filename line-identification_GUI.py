@@ -1,4 +1,3 @@
-import matplotlib.pyplot as plt
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
@@ -12,10 +11,8 @@ from astropy.io import fits
 from scipy import signal
 import os.path
 import sys
-import numpy as np
-
-
 sys.path.append('/export/borthaku/Codes/PyReduce')
+import numpy as np
 from tqdm import tqdm
 from scipy.optimize import least_squares
 import warnings
@@ -116,30 +113,19 @@ def _fit_single_line(obs, center, width):
     coef = gaussfit2(x, section)
     return coef
 
-def fit_lines(obs, lines):
+def fit_lines(obs, line):
+    try:
+        coef = _fit_single_line(
+            obs,
+            line["posm"][0],
+            line["width"][0],
+        )
+        line["posm"] = coef[1]
+    except:
+        # Gaussian fit failed, dont use line
+        line["flag"] = False
 
-    for i, line in tqdm(
-            enumerate(lines), total=len(lines), leave=False, desc="Lines"
-    ):
-        if line["posm"] < 0 or line["posm"] >= obs.shape[1]:
-            # Line outside pixel range
-            continue
-        if line["order"] < 0 or line["order"] >= len(obs):
-            # Line outside order range
-            continue
-
-        try:
-            coef = _fit_single_line(
-                obs[int(line["order"])],
-                line["posm"],
-                line["width"],
-            )
-            lines[i]["posm"] = coef[1]
-        except:
-            # Gaussian fit failed, dont use line
-            lines[i]["flag"] = False
-
-    return lines
+    return line
 
 def create_image_from_lines(lines, ncol):
     max_order = int(np.max(lines["order"]))
@@ -205,6 +191,7 @@ class PlotCanvas(FigureCanvas):
         test = [[wpeak, self.temporder, self.temppeak, self.tempwidth, self.tempheight, True]]
         test = np.array(test).T
         new_line = LineList.from_list(*test)
+        new_line = fit_lines(self.thar_master[self.temporder],new_line)
         # Append the new line to the existing lines
         self.lines = np.append(self.lines, new_line)
 
@@ -437,11 +424,12 @@ class MainWindow(QMainWindow):
         # Collect the visible lines
         visible_lines = self.get_visible_lines()
 
-        # Save the visible lines to an npz file
-        save_path = 'linelist_test.npz'
-        np.savez(save_path, cs_lines=visible_lines)
-
-        print(f'Selected lines saved to {save_path}')
+        # Open a dialog to select the save path
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save Linelist File", "", "NPZ Files (*.npz)")
+        if save_path:
+            # Save the visible lines to the selected npz file
+            np.savez(save_path, cs_lines=visible_lines)
+            print(f'Selected lines saved to {save_path}')
 
     def onclickupdate(self):
         """Update the linelist with the new data from the table."""

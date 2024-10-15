@@ -13,7 +13,6 @@ import os.path
 import sys
 sys.path.append('/export/borthaku/Codes/PyReduce')
 import numpy as np
-from tqdm import tqdm
 from scipy.optimize import least_squares
 import warnings
 
@@ -151,7 +150,7 @@ def find_offset(offset_info_path, lines, thar_master):
             correlation = signal.correlate2d(thar_master, img, mode="same")
             offset_order, offset_x = np.unravel_index(np.argmax(correlation), correlation.shape)
             offset_order = offset_order - img.shape[0] // 2 + 1
-            offset_x = offset_x - img.shape[1] // 2 + 1
+            offset_x = offset_x - img.shape[1] // 2
             offset = [int(offset_order), int(offset_x)]
             np.savetxt(offset_info_path, np.c_[int(offset_order), int(offset_x)], delimiter=' ', fmt=['%d', '%d'])
         else:
@@ -159,6 +158,7 @@ def find_offset(offset_info_path, lines, thar_master):
     return offset
 
 def apply_alignment_offset(lines, offset, select=None):
+    print(offset)
     lines["xfirst"][select] += offset[1]
     lines["xlast"][select] += offset[1]
     lines["posm"][select] += offset[1]
@@ -183,8 +183,7 @@ class PlotCanvas(FigureCanvas):
         # Plot based on index
         self.plot(index)
 
-    def on_button_click(self):
-        print(self.temporder, self.temppeak, self.tempxfirst, self.tempxlast)
+    def on_addline_button_click(self):
         wpeak = 0
 
         # wave, order, pos, width, height, flag
@@ -242,7 +241,7 @@ class PlotCanvas(FigureCanvas):
 
     def plot(self, index):
         self.button = QPushButton('Add line', self)
-        self.button.clicked.connect(self.on_button_click)
+        self.button.clicked.connect(self.on_addline_button_click)
         layout = QVBoxLayout()
         layout.addWidget(self.button)
         self.axes.clear()
@@ -454,7 +453,7 @@ class MainWindow(QMainWindow):
             xlast = int(float(table.item(row, 5).text()))  # xLast
 
             # Find the corresponding line in the `lines` array
-            line_index = np.where((lines['order'] == order) & (lines['posm'] == posm))[0]
+            line_index = np.where((lines['order'] == order) & (np.round(lines['posm'],decimals=3) == np.round(posm,decimals=3)))[0]
             if len(line_index) == 1:
                 line_index = line_index[0]
                 lines[line_index]['wlc'] = wlc

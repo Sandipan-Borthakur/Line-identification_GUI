@@ -3,6 +3,7 @@ from PyQt5.QtWidgets import QFileDialog, QMessageBox
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
                              QTableWidgetItem, QSplitter,
                              QCheckBox, QHeaderView, QPushButton)
+from PyQt5.QtGui import QFont
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.widgets import SpanSelector
@@ -241,11 +242,13 @@ class PlotCanvas(FigureCanvas):
 
     def plot(self, index):
         self.button = QPushButton('Add line', self)
+        self.button.adjustSize()
         self.button.clicked.connect(self.on_addline_button_click)
         layout = QVBoxLayout()
         layout.addWidget(self.button)
         self.axes.clear()
 
+        fontsize = 20
         # Plot the thar_master data for the current order
         self.axes.plot(np.arange(0, self.thar_master.shape[1]), self.thar_master[index])
 
@@ -257,7 +260,7 @@ class PlotCanvas(FigureCanvas):
             line_pos = np.argmax(self.thar_master[index][line['xfirst']:line['xlast'] + 1])
             line_intensity = self.thar_master[index][line['xfirst']:line['xlast'] + 1][line_pos]
             self.axes.plot([line['posm'], line['posm']], [1.1 * line_intensity, 1.5 * line_intensity], 'r', lw=2)
-            self.axes.text(line['posm'], 1.6 * line_intensity, '{:.4f}'.format(line['wlc']), rotation='vertical')
+            self.axes.text(line['posm'], 1.6 * line_intensity, '{:.4f}'.format(line['wlc']), rotation='vertical',fontsize=fontsize)
 
         self.span = SpanSelector(
             self.axes,
@@ -269,9 +272,10 @@ class PlotCanvas(FigureCanvas):
             interactive=True,
             drag_from_anywhere=True
         )
-        self.axes.set_title(f'ThAr Master Order {index}')
-        self.axes.set_xlabel('Pixels')
-        self.axes.set_ylabel('Intensity')
+        self.axes.set_title(f'ThAr Master Order {index}',fontsize=fontsize)
+        self.axes.set_xlabel('Pixels',fontsize=fontsize)
+        self.axes.set_ylabel('Intensity',fontsize=fontsize)
+        self.axes.tick_params(axis='both',labelsize=fontsize)
         self.axes.set_ylim((-0.2, max(self.thar_master[index]) + 0.2))
         self.draw()
 
@@ -283,11 +287,11 @@ class MainWindow(QMainWindow):
 
         # Create a small button to load ThAr Master file at the top of the window
         load_button = QPushButton('Load ThAr Master File', self)
-        load_button.setFixedSize(170, 30)  # Make the button small
+        load_button.adjustSize()  # Make the button small
         load_button.clicked.connect(self.load_thar_master_file)
 
         load_linelist_button = QPushButton('Load Linelist File', self)
-        load_linelist_button.setFixedSize(150, 30)  # Optional button to load linelist file
+        load_linelist_button.adjustSize()  # Optional button to load linelist file
         load_linelist_button.clicked.connect(self.load_linelist_file)
 
         # Add buttons to a layout and place it at the top
@@ -373,12 +377,12 @@ class MainWindow(QMainWindow):
 
             # Create Save button
             self.button = QPushButton('Save', self)
-            self.button.setFixedSize(80, 30)  # Set fixed size for the button
+            self.button.adjustSize()  # Set fixed size for the button
             self.button.clicked.connect(self.onclick)
 
             # Create Update button
             self.updatebutton = QPushButton('Update', self)
-            self.updatebutton.setFixedSize(80, 30)  # Set fixed size for the button
+            self.updatebutton.adjustSize()  # Set fixed size for the button
             self.updatebutton.clicked.connect(self.onclickupdate)
 
             # Add buttons to the horizontal layout

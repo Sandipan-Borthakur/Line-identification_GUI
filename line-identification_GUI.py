@@ -1,5 +1,5 @@
 from PyQt5.QtCore import Qt
-from PyQt5.QtWidgets import QFileDialog, QMessageBox
+from PyQt5.QtWidgets import QFileDialog, QDesktopWidget
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
                              QTableWidgetItem, QSplitter,
                              QCheckBox, QHeaderView, QPushButton)
@@ -307,9 +307,10 @@ class MainWindow(QMainWindow):
 
         self.tab_widget = QTabWidget()
         central_layout.addWidget(self.tab_widget)
-
         self.setCentralWidget(central_widget)
 
+        screen = QDesktopWidget().screenGeometry()
+        self.setGeometry(screen)
         # Initialize attributes to store loaded data
         self.thar_master = None
         self.lines = None

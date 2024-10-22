@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import QFileDialog, QDesktopWidget
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QTabWidget, QTableWidget,
                              QTableWidgetItem, QSplitter,
                              QCheckBox, QHeaderView, QPushButton)
-from PyQt5.QtGui import QFont
+
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.widgets import SpanSelector
@@ -12,10 +12,11 @@ from astropy.io import fits
 from scipy import signal
 import os.path
 import sys
-sys.path.append('/export/borthaku/Codes/PyReduce')
 import numpy as np
 from scipy.optimize import least_squares
 import warnings
+import matplotlib
+matplotlib.use('TkAgg')
 
 def gaussval2(x, a, mu, sig, const):
     return a * np.exp(-((x - mu) ** 2) / (2 * sig)) + const
@@ -425,15 +426,22 @@ class MainWindow(QMainWindow):
 
     def onclick(self):
         """Save button functionality."""
-        # Collect the visible lines
-        visible_lines = self.get_visible_lines()
+        try:
+            # Collect the visible lines
+            visible_lines = self.get_visible_lines()
 
-        # Open a dialog to select the save path
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save Linelist File", "", "NPZ Files (*.npz)")
-        if save_path:
-            # Save the visible lines to the selected npz file
-            np.savez(save_path, cs_lines=visible_lines)
-            print(f'Selected lines saved to {save_path}')
+            # Open a dialog to select the save path
+            save_path, _ = QFileDialog.getSaveFileName(self, "Save Linelist File", "", "NPZ Files (*.npz)")
+            if save_path:
+                # Ensure the file has .npz extension
+                if not save_path.endswith('.npz'):
+                    save_path += '.npz'
+
+                # Save the visible lines to the selected npz file
+                np.savez(save_path, cs_lines=visible_lines)
+                print(f'Selected lines successfully saved to {save_path}')
+        except Exception as e:
+            print(f"Error saving lines: {str(e)}")
 
     def onclickupdate(self):
         """Update the linelist with the new data from the table."""
@@ -468,22 +476,29 @@ class MainWindow(QMainWindow):
                 lines[line_index]['xlast'] = xlast
 
     def get_visible_lines(self):
+        """Collect all visible lines from all tabs."""
         visible_lines = []
 
         for i in range(self.tab_widget.count()):  # Loop over all the tabs
-            # Access the QSplitter in the tab (it contains both the PlotCanvas and the table)
-            splitter = self.tab_widget.widget(0).layout().itemAt(0).widget()  # The splitter is the first widget
+            # Access the QSplitter in the tab
+            splitter = self.tab_widget.widget(i).layout().itemAt(0).widget()  # The splitter is the first widget
             canvas = splitter.widget(0)  # The PlotCanvas is the first widget in the splitter
-            if i == self.tab_widget.count()-1:
-                higher_order_lines = canvas.lines[canvas.lines['order'] > i]
-            for j, line in enumerate(canvas.lines[canvas.lines['order'] == i]):
+
+            # Get lines for current order
+            current_order_lines = canvas.lines[canvas.lines['order'] == i]
+
+            # Add visible lines from current order
+            for j, line in enumerate(current_order_lines):
                 if j not in canvas.hidden_lines:  # Check if the line is visible
                     visible_lines.append(line)
 
-        for higher_order_line in higher_order_lines:
-            visible_lines.append(higher_order_line)
+            # If this is the last tab, collect all lines from higher orders
+            if i == self.tab_widget.count() - 1:
+                higher_order_lines = canvas.lines[canvas.lines['order'] > i]
+                for line in higher_order_lines:
+                    visible_lines.append(line)
 
-        return np.array(visible_lines)
+        return np.array(visible_lines, dtype=LineList.dtype)
 
 def main():
     app = QApplication(sys.argv)
